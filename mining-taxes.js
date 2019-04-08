@@ -1,6 +1,17 @@
 'use strict'
 
+/**
+ * Represents a cryptocurrency transaction.
+ */
 class Transaction {
+    /**
+     * @param {Cryptocurrency} coin The cryptocurrency this transaction transfers.
+     * @param {String} address The address searched in fetching this transaction.
+     * @param {Number} realAmount The transaction amount in the smallest denomination of its currency.
+     * @param {String} timestamp The full timestamp of when this transaction occurred.
+     * @param {String} date The date on which this transaction occurred.
+     * @param {String} hash This transaction's hash.
+     */
     constructor(coin, address, realAmount, timestamp, date, hash) {
         this.coin = coin
         this.address = address
@@ -8,22 +19,35 @@ class Transaction {
         this.timestamp = timestamp
         this.date = date
         this.hash = hash
+        this.amount = this.realAmount / this.coin.factor
     }
 
+    /**
+     * Queries Coinbase for the price of this transaction's currency on the given date.
+     * 
+     * @param {String} currency The currency code to retrieve the price in.
+     */
     getPrice(currency = 'USD') {
         return getCoinbasePrice(this.date, this.coin.code, currency)
             .then(price => this._addPriceData(price))
             .catch(console.log)
     }
 
+    /**
+     * Adds price data to this transaction, calculating value when received.
+     * 
+     * @param {Number} price The price data to add to this transaction.
+     */
     _addPriceData(price) {
         this.price = price
-        this.amount = this.realAmount / this.coin.factor
         this.valueWhenReceived = price * this.amount
         return this
     }
 }
 
+/**
+ * Data class for blockchain explorer links.
+ */
 class Explorer {
     constructor(addressExplorer, txExplorer) {
         this.addressExplorer = addressExplorer
@@ -31,7 +55,19 @@ class Explorer {
     }
 }
 
+/**
+ * Represents a cryptocurrency and functionality to lookup transactions.
+ * 
+ * This class is abstract; subclasses must implement `_getTransactions`.
+ */
 class Cryptocurrency {
+    /**
+     * @param {String} name The name of this cryptocurrency.
+     * @param {String} code The shorthand code used on sites like Coinbase.
+     * @param {Number} factor The factor for converting from the smallest resolution of this currency.
+     * @param {Explorer} explorer The data object containing explorer links.
+     * @param {Boolean} multiAddr `true` if this service accepts multi-address requests, `false` otherwise.
+     */
     constructor(name, code, factor, explorer, multiAddr = false) {
         if (new.target === Cryptocurrency) {
             throw new TypeError('Cannot instantiate abstract class Cryptocurrency.')
@@ -43,6 +79,23 @@ class Cryptocurrency {
         this.multiAddr = multiAddr
     }
 
+    /**
+     * Fetches in transactions for the given address(es).
+     * Must be implemented by subclasses.
+     * 
+     * @param {any} addressOrAddresses The address(es) to retrieve transactions for.
+     *                                 `Array` if multi-address, `String` otherwise.
+     */
+    _getTransactions(addressOrAddresses) {
+        throw new TypeError('Must implement abstract function getTransactions.')
+    }
+
+    /**
+     * Returns an array of promises to retrieve transactions for the given addresses via this service.
+     * 
+     * @param {Array} addresses The addresses to build transaction promises for.
+     * @param {String} currency The code for the currency to retrieve prices in. Default `USD`.
+     */
     getTaxableEventPromises(addresses, currency = 'USD') {
         let promises = []
         let pricePromise = getCurrentCoinbasePrice(this.code, currency)
@@ -56,10 +109,13 @@ class Cryptocurrency {
         return promises
     }
 
-    _getTransactions(addressOrAddresses) {
-        throw new TypeError('Must implement abstract function getTransactions.')
-    }
-
+    /**
+     * Gets the taxable events for the given addresses.
+     * 
+     * @param {any} addressOrAddresses The address or addresses to get taxable events for.
+     * @param {Promise} pricePromise The price request wrapped in a promise.
+     * @param {String} currency The currency code of the requested currency.
+     */
     _getTaxableEvents(addressOrAddresses, pricePromise, currency) {
         return this._getTransactions(addressOrAddresses)
             .then(txns => {
@@ -69,6 +125,13 @@ class Cryptocurrency {
             .then(txns => this._buildResult(txns, currency, pricePromise))
     }
     
+    /**
+     * Builds the result object containing currency info, transactions, and explorer links.
+     * 
+     * @param {Array[Transaction]} txns The transactions to build a result for.
+     * @param {String} currency The currency code used.
+     * @param {Promise} pricePromise The price request wrapped in a promise.
+     */
     async _buildResult(txns, currency, pricePromise) {
         let result = {
             coin: {
@@ -98,6 +161,9 @@ class Bitcoin extends Cryptocurrency {
         super('Bitcoin', 'BTC', 1e8, BITCOIN_EXPLORER, true)
     }
 
+    /**
+     * Retrieves Bitcoin transactions from https://blockchain.info for the given addresses.
+     */
     _getTransactions(addresses, data = [], offset = 0) {
         return fetch(sprintf(btcEndpoint, addresses.join('|'), offset))
             .then(response => response.json())
@@ -129,6 +195,9 @@ class Litecoin extends Cryptocurrency {
         super('Litecoin', 'LTC', 1e8, LITECOIN_EXPLORER)
     }
 
+    /**
+     * Retrieves Litecoin transactions from https://live.blockcypher.com for the given address.
+     */
     _getTransactions(address, data = [], offset = 0) {
         let url = sprintf(ltcEndpoint, address)
         if (offset > 0) {
@@ -162,6 +231,9 @@ class Ethereum extends Cryptocurrency {
         super('Ethereum', 'ETH', 1e18, ETHEREUM_EXPLORER)
     }
 
+    /**
+     * Retrieves Ethereum transactions from https://etherscan.io for the given address.
+     */
     _getTransactions(address) {
         return fetch(sprintf(ethEndpoint, address, config.apiKeys.etherscan))
             .then(response => response.json())
@@ -192,6 +264,7 @@ const BITCOIN_EXPLORER = new Explorer('https://blockchain.info/address/', 'https
 const LITECOIN_EXPLORER = new Explorer('https://live.blockcypher.com/ltc/address/', 'https://live.blockcypher.com/ltc/tx/')
 const ETHEREUM_EXPLORER = new Explorer('https://etherscan.io/address/', 'https://etherscan.io/tx/')
 
+// supported cryptocurrencies
 const coins = {
     'bitcoin': new Bitcoin(),
     'litecoin': new Litecoin(),
@@ -202,12 +275,17 @@ const fs = require('fs')
 const fetch = require('node-fetch')
 const sprintf = require('sprintf-js').sprintf
 
+// load config and retrieve taxable events for addresses supplied in config, printing results
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'))
 let promises = Object.keys(config.addresses)
     .map(coin => coins[coin].getTaxableEventPromises(config.addresses[coin]))
 promises = [].concat(...promises)  // flatten promises
 Promise.all(promises).then(printResults).catch(console.log)
 
+/**
+ * Prints the results object containing transactions from multiple currencies in csv form.
+ * @param {Object} results The results object containing transactions and currency info.
+ */
 function printResults(results) {
     // console.log(JSON.stringify(results, null, 4))
     console.log('Coin,Code,Date,Price,Amount,Value When Received,Address,Transaction')
@@ -222,10 +300,23 @@ function printResults(results) {
     })
 }
 
+/**
+ * Fetches the current price of a cryptocurrency.
+ * 
+ * @param {String} fromCurrency The cryptocurrency code to retrieve the price for.
+ * @param {String} toCurrency The currency code to retrieve the price in.
+ */
 function getCurrentCoinbasePrice(fromCurrency, toCurrency = 'USD') {
     return getCoinbasePrice(null, fromCurrency, toCurrency)
 }
 
+/**
+ * Fetches the price of a cryptocurrency on the given date via Coinbase.
+ * 
+ * @param {String} date The date to retrieve the price for.
+ * @param {String} fromCurrency The cryptocurrency code to retrieve the price for.
+ * @param {String} toCurrency The currency code to retrieve the price in.
+ */
 function getCoinbasePrice(date, fromCurrency, toCurrency = 'USD') {
     let url = sprintf(date !== null ? priceEndpoint + "?date=%s" : priceEndpoint, fromCurrency, toCurrency, date)
     return fetch(url, { headers: priceHeaders })
@@ -234,6 +325,9 @@ function getCoinbasePrice(date, fromCurrency, toCurrency = 'USD') {
         .catch(console.log)
 }
 
+/**
+ * Converts the given number of seconds into a date.
+ */
 function getDateFromSeconds(seconds) {
     let date = new Date(seconds * 1000)
     let format = "%d-%02d-%02d"
