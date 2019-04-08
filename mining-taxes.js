@@ -49,6 +49,30 @@ const sprintf = require('sprintf-js').sprintf
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'))
 Promise.all(getIncomePromises()).then(printResults).catch(console.log)
 
+class Transaction {
+    constructor(coin, address, realAmount, timestamp, date, hash) {
+        this.coin = coin
+        this.address = address
+        this.realAmount = realAmount
+        this.timestamp = timestamp
+        this.date = date
+        this.hash = hash
+    }
+
+    getTransactionPrice(currency = 'USD') {
+        return getCoinbasePrice(this.date, this.coin.code, currency)
+            .then(price => this._addPriceData(price))
+            .catch(console.log)
+    }
+
+    _addPriceData(price) {
+        this.price = price
+        this.amount = this.realAmount / this.coin.factor
+        this.valueWhenReceived = price * this.amount
+        return this
+    }
+}
+
 function printResults(results) {
     // console.log(JSON.stringify(results, null, 4))
     console.log('Coin,Code,Date,Price,Amount,Value When Received,Address,Transaction')
@@ -80,26 +104,13 @@ function getIncomePromises() {
 function getTaxableIncome(address, coinName, currency = 'USD') {
     let coin = coins[coinName]
     let pricePromise = getCurrentCoinbasePrice(coin.code, currency)
-    return coin.getTransactions(address)
+    return coin.getTransactions(coin, address)
         .then(txns => {
-            let txnPromises = txns.map(txn => getTransactionPrice(txn, coin, currency))
+            let txnPromises = txns.map(txn => txn.getTransactionPrice(currency))
             return Promise.all(txnPromises)
         })
         .then(txns => buildResult(txns, coin, currency, pricePromise))
         .catch(console.log)
-}
-
-function getTransactionPrice(txn, coin, currency) {
-    return getCoinbasePrice(txn.date, coin.code, currency)
-        .then(price => addPriceData(txn, price, coin))
-        .catch(console.log)
-}
-
-function addPriceData(txn, price, coin) {
-    txn.price = price
-    txn.amount = txn.realAmount / coin.factor
-    txn.valueWhenReceived = price * txn.amount
-    return txn
 }
 
 async function buildResult(txns, coin, currency, pricePromise) {
@@ -125,7 +136,7 @@ async function buildResult(txns, coin, currency, pricePromise) {
     return result
 }
 
-function getBitcoinTransactions(addresses, data = [], offset = 0) {
+function getBitcoinTransactions(coin, addresses, data = [], offset = 0) {
     return fetch(sprintf(btcEndpoint, addresses.join('|'), offset))
         .then(response => response.json())
         .then(json => {
@@ -133,12 +144,12 @@ function getBitcoinTransactions(addresses, data = [], offset = 0) {
             for (let i = 0; i < txLength; i++) {
                 let result = json.txs[i].result
                 if (result > 0) {
-                    let tx = {}
-                    tx.address = json.txs[i].out[0].addr
-                    tx.realAmount = result
-                    tx.timestamp = json.txs[i].time
-                    tx.date = getDateFromSeconds(tx.timestamp)
-                    tx.hash = json.txs[i].hash
+                    let address = json.txs[i].out[0].addr
+                    let realAmount = result
+                    let timestamp = json.txs[i].time
+                    let date = getDateFromSeconds(timestamp)
+                    let hash = json.txs[i].hash
+                    let tx = new Transaction(coin, address, realAmount, timestamp, date, hash)
                     data.push(tx)
                 }
             }
@@ -150,7 +161,7 @@ function getBitcoinTransactions(addresses, data = [], offset = 0) {
         }).catch(console.log)
 }
 
-function getLitecoinTransactions(address, data = [], offset = 0) {
+function getLitecoinTransactions(coin, address, data = [], offset = 0) {
     let url = sprintf(ltcEndpoint, address)
     if (offset > 0) {
         url += '&before=' + offset
@@ -161,12 +172,11 @@ function getLitecoinTransactions(address, data = [], offset = 0) {
             let lastBlock = -1
             for (let i = 0; i < json.txrefs.length; i++) {
                 if (json.txrefs[i].spent === false) {
-                    let tx = {}
-                    tx.address = address
-                    tx.realAmount = json.txrefs[i].value
-                    tx.timestamp = json.txrefs[i].confirmed
-                    tx.date = tx.timestamp.substring(0, 10)
-                    tx.hash = json.txrefs[i].tx_hash
+                    let realAmount = json.txrefs[i].value
+                    let timestamp = json.txrefs[i].confirmed
+                    let date = timestamp.substring(0, 10)
+                    let hash = json.txrefs[i].tx_hash
+                    let tx = new Transaction(coin, address, realAmount, timestamp, date, hash)
                     data.push(tx)
                 }
                 lastBlock = json.txrefs[i].block_height
@@ -178,19 +188,18 @@ function getLitecoinTransactions(address, data = [], offset = 0) {
         }).catch(console.log)
 }
 
-function getEthereumTransactions(address) {
+function getEthereumTransactions(coin, address) {
     return fetch(sprintf(ethEndpoint, address, config.apiKeys.etherscan))
         .then(response => response.json())
         .then(json => {
             let data = []
             for (let i = 0; i < json.result.length; i++) {
                 if (json.result[i].to === address) {
-                    let tx = {}
-                    tx.address = address
-                    tx.realAmount = json.result[i].value
-                    tx.timestamp = json.result[i].timeStamp
-                    tx.date = getDateFromSeconds(tx.timestamp)
-                    tx.hash = json.result[i].hash
+                    let realAmount = json.result[i].value
+                    let timestamp = json.result[i].timeStamp
+                    let date = getDateFromSeconds(timestamp)
+                    let hash = json.result[i].hash
+                    let tx = new Transaction(coin, address, realAmount, timestamp, date, hash)
                     data.push(tx)
                 }
             }
