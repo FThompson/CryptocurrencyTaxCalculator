@@ -1,0 +1,16 @@
+{
+    "addresses": {
+        "bitcoin": [
+            
+        ],
+        "litecoin": [
+
+        ],
+        "ethereum": [
+
+        ]
+    },
+    "apiKeys": {
+        "etherscan": ""
+    }
+}
