@@ -57,7 +57,7 @@ function printResults(results) {
         // console.log('Current value: $' + crypto.value)
         // console.log('Taxable income: $' + crypto.valueWhenReceived)
         crypto.txns.forEach(txn => {
-            let data = [crypto.coin.name, crypto.coin.code, txn.date, txn.price, txn.amount, txn.valueWhenReceived, crypto.address, txn.hash]
+            let data = [crypto.coin.name, crypto.coin.code, txn.date, txn.price, txn.amount, txn.valueWhenReceived, txn.address, txn.hash]
             console.log(data.join(','))
         })
     })
@@ -85,7 +85,7 @@ function getTaxableIncome(address, coinName, currency = 'USD') {
             let txnPromises = txns.map(txn => getTransactionPrice(txn, coin, currency))
             return Promise.all(txnPromises)
         })
-        .then(txns => buildResult(txns, address, coin, currency, pricePromise))
+        .then(txns => buildResult(txns, coin, currency, pricePromise))
         .catch(console.log)
 }
 
@@ -95,9 +95,15 @@ function getTransactionPrice(txn, coin, currency) {
         .catch(console.log)
 }
 
-async function buildResult(txns, address, coin, currency, pricePromise) {
+function addPriceData(txn, price, coin) {
+    txn.price = price
+    txn.amount = txn.realAmount / coin.factor
+    txn.valueWhenReceived = price * txn.amount
+    return txn
+}
+
+async function buildResult(txns, coin, currency, pricePromise) {
     let result = {
-        address: address,
         coin: {
             name: coin.name,
             code: coin.code,
@@ -119,13 +125,6 @@ async function buildResult(txns, address, coin, currency, pricePromise) {
     return result
 }
 
-function addPriceData(txn, price, coin) {
-    txn.price = price
-    txn.amount = txn.realAmount / coin.factor
-    txn.valueWhenReceived = price * txn.amount
-    return txn
-}
-
 function getBitcoinTransactions(addresses, data = [], offset = 0) {
     return fetch(sprintf(btcEndpoint, addresses.join('|'), offset))
         .then(response => response.json())
@@ -135,6 +134,7 @@ function getBitcoinTransactions(addresses, data = [], offset = 0) {
                 let result = json.txs[i].result
                 if (result > 0) {
                     let tx = {}
+                    tx.address = json.txs[i].out[0].addr
                     tx.realAmount = result
                     tx.timestamp = json.txs[i].time
                     tx.date = getDateFromSeconds(tx.timestamp)
@@ -162,6 +162,7 @@ function getLitecoinTransactions(address, data = [], offset = 0) {
             for (let i = 0; i < json.txrefs.length; i++) {
                 if (json.txrefs[i].spent === false) {
                     let tx = {}
+                    tx.address = address
                     tx.realAmount = json.txrefs[i].value
                     tx.timestamp = json.txrefs[i].confirmed
                     tx.date = tx.timestamp.substring(0, 10)
@@ -185,6 +186,7 @@ function getEthereumTransactions(address) {
             for (let i = 0; i < json.result.length; i++) {
                 if (json.result[i].to === address) {
                     let tx = {}
+                    tx.address = address
                     tx.realAmount = json.result[i].value
                     tx.timestamp = json.result[i].timeStamp
                     tx.date = getDateFromSeconds(tx.timestamp)
