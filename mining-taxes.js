@@ -28,7 +28,7 @@ class Transaction {
      * @param {String} currency The currency code to retrieve the price in.
      */
     getPrice(currency = 'USD') {
-        return getCoinbasePrice(this.date, this.coin.code, currency)
+        return this.coin.getCoinbasePrice(this.date, currency)
             .then(price => this._addPriceData(price))
             .catch(console.log)
     }
@@ -98,7 +98,7 @@ class Cryptocurrency {
      */
     getTaxableEventPromises(addresses, currency = 'USD') {
         let promises = []
-        let pricePromise = getCurrentCoinbasePrice(this.code, currency)
+        let pricePromise = this.getCurrentCoinbasePrice(currency)
         if (this.multiAddr) {
             promises.push(this._getTaxableEvents(addresses, pricePromise, currency))
         } else {
@@ -153,6 +153,29 @@ class Cryptocurrency {
             result.value += txn.value
         })
         return result
+    }
+
+    /**
+     * Fetches the current price of this cryptocurrency.
+     * 
+     * @param {String} toCurrency The currency code to retrieve the price in.
+     */
+    getCurrentCoinbasePrice(toCurrency = 'USD') {
+        return this.getCoinbasePrice(null, toCurrency)
+    }
+    
+    /**
+     * Fetches the price of this cryptocurrency on the given date via Coinbase.
+     * 
+     * @param {String} date The date to retrieve the price for.
+     * @param {String} toCurrency The currency code to retrieve the price in.
+     */
+    getCoinbasePrice(date, toCurrency = 'USD') {
+        let url = sprintf(date !== null ? priceEndpoint + "?date=%s" : priceEndpoint, this.code, toCurrency, date)
+        return fetch(url, { headers: priceHeaders })
+            .then(response => response.json())
+            .then(json => json.data.amount)
+            .catch(console.log)
     }
 }
 
@@ -298,31 +321,6 @@ function printResults(results) {
             console.log(data.join(','))
         })
     })
-}
-
-/**
- * Fetches the current price of a cryptocurrency.
- * 
- * @param {String} fromCurrency The cryptocurrency code to retrieve the price for.
- * @param {String} toCurrency The currency code to retrieve the price in.
- */
-function getCurrentCoinbasePrice(fromCurrency, toCurrency = 'USD') {
-    return getCoinbasePrice(null, fromCurrency, toCurrency)
-}
-
-/**
- * Fetches the price of a cryptocurrency on the given date via Coinbase.
- * 
- * @param {String} date The date to retrieve the price for.
- * @param {String} fromCurrency The cryptocurrency code to retrieve the price for.
- * @param {String} toCurrency The currency code to retrieve the price in.
- */
-function getCoinbasePrice(date, fromCurrency, toCurrency = 'USD') {
-    let url = sprintf(date !== null ? priceEndpoint + "?date=%s" : priceEndpoint, fromCurrency, toCurrency, date)
-    return fetch(url, { headers: priceHeaders })
-        .then(response => response.json())
-        .then(json => json.data.amount)
-        .catch(console.log)
 }
 
 /**
