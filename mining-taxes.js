@@ -298,12 +298,14 @@ const fs = require('fs')
 const fetch = require('node-fetch')
 const sprintf = require('sprintf-js').sprintf
 
-// load config and retrieve taxable events for addresses supplied in config, printing results
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'))
-let promises = Object.keys(config.addresses)
-    .map(coin => coins[coin].getTaxableEventPromises(config.addresses[coin]))
-promises = [].concat(...promises)  // flatten promises
-Promise.all(promises).then(printResults).catch(console.log)
+if (require.main === module) {
+    // load config and retrieve taxable events for addresses supplied in config, printing results
+    let promises = Object.keys(config.addresses)
+        .map(coin => coins[coin].getTaxableEventPromises(config.addresses[coin]))
+    promises = [].concat(...promises)  // flatten promises
+    Promise.all(promises).then(printResults).catch(console.log)
+}
 
 /**
  * Prints the results object containing transactions from multiple currencies in csv form.
