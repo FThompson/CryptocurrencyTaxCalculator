@@ -174,7 +174,7 @@ class Cryptocurrency {
         let url = sprintf(date !== null ? priceEndpoint + "?date=%s" : priceEndpoint, this.code, toCurrency, date)
         return fetch(url, { headers: priceHeaders })
             .then(response => response.json())
-            .then(json => json.data.amount)
+            .then(json => Number(json.data.amount))
             .catch(console.log)
     }
 }
