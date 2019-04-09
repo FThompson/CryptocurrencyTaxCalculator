@@ -300,11 +300,23 @@ const sprintf = require('sprintf-js').sprintf
 
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'))
 if (require.main === module) {
-    // load config and retrieve taxable events for addresses supplied in config, printing results
-    let promises = Object.keys(config.addresses)
-        .map(coin => coins[coin].getTaxableEventPromises(config.addresses[coin]))
+    // retrieve taxable events for addresses supplied in config, printing results
+    calculateIncome(config.addresses).then(printResults).catch(console.log)
+} else {
+    module.exports.calculateIncome = calculateIncome
+}
+
+/**
+ * Calculates income from the given addresses. Returns an object containing coin values
+ * and values of transactions at the time received, representing cost basis.
+ * 
+ * @param {Object} addresses A dictionary of addresses with coin names pointing to arrays.
+ */
+function calculateIncome(addresses) {
+    let promises = Object.keys(addresses)
+        .map(coin => coins[coin].getTaxableEventPromises(addresses[coin]))
     promises = [].concat(...promises)  // flatten promises
-    Promise.all(promises).then(printResults).catch(console.log)
+    return Promise.all(promises)
 }
 
 /**

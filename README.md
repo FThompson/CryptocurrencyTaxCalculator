@@ -26,7 +26,7 @@ See `config.example.json` for a template:
 }
 ```
 
-Run by executing `node mining-taxes.js` and view output on the command line.
+Run by executing `node income-calc.js` and view output on the command line.
 
 ## TODO
 
